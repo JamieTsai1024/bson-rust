@@ -7,7 +7,7 @@ use crate::{
     deserialize_from_document,
     doc,
     oid::ObjectId,
-    serde_helpers::{bson_datetime, object_id, u32, u64, uuid_1},
+    serde_helpers::{datetime, object_id, u32, u64, uuid_1},
     serialize_to_bson,
     serialize_to_document,
     spec::BinarySubtype,
@@ -24,12 +24,11 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_with::serde_as;
-use time::OffsetDateTime;
-
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
 };
+use time::OffsetDateTime;
 
 #[test]
 fn test_ser_vec() {
@@ -611,7 +610,7 @@ fn test_oid_helpers() {
     #[cfg(feature = "serde_with-3")]
     {
         #[serde_as]
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
         struct A {
             #[serde_as(as = "object_id::FromHexString")]
             oid: String,
@@ -650,51 +649,26 @@ fn test_oid_helpers() {
             "Expected serialized oid_optional_none to be None."
         );
 
-        match doc.get("oid_optional_some") {
-            Some(Bson::ObjectId(value)) => {
-                assert_eq!(
-                    *value, oid,
-                    "Expected serialized oid_optional_some to match original ObjectId."
-                )
-            }
-            _ => {
-                panic!("Expected serialized oid_optional_some to be a BSON ObjectId.")
-            }
-        }
+        assert_eq!(
+            doc.get("oid_optional_some"),
+            Some(&Bson::ObjectId(oid)),
+            "Expected serialized oid_optional_some to match original."
+        );
 
         let oid_vector = doc
             .get_array("oid_vector")
             .expect("Expected serialized oid_vector to be a BSON array.");
-        let expected_oid_vector: Vec<Bson> = a
-            .oid_vector
-            .into_iter()
-            .map(|oid| Bson::ObjectId(ObjectId::parse_str(oid).unwrap()))
-            .collect();
+        let expected_oid_vector: Vec<Bson> = vec![Bson::ObjectId(oid)];
         assert_eq!(
             oid_vector, &expected_oid_vector,
             "Expected each serialized element in oid_vector match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.oid,
-            oid.to_string(),
-            "Expected deserialized oid to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.oid_optional_some,
-            Some(oid.to_string()),
-            "Expected deserialized oid_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.oid_vector,
-            vec![oid.to_string()],
-            "Expected deserialized oid_vector to match the original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
 
         // Validate serializing error case with an invalid ObjectId string
@@ -718,7 +692,7 @@ fn test_oid_helpers() {
         );
 
         #[serde_as]
-        #[derive(Serialize, Deserialize, Debug)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
         struct B {
             #[serde_as(as = "object_id::AsHexString")]
             oid: ObjectId,
@@ -757,56 +731,26 @@ fn test_oid_helpers() {
             "Expected serialized oid_optional_none to be None."
         );
 
-        match doc.get("oid_optional_some") {
-            Some(Bson::String(value)) => {
-                assert_eq!(
-                    *value,
-                    oid.to_hex(),
-                    "Expected serialized oid_optional_some to match original ObjectId."
-                )
-            }
-            _ => {
-                panic!("Expected serialized oid_optional_some to be a BSON String.")
-            }
-        }
+        assert_eq!(
+            doc.get("oid_optional_some"),
+            Some(&Bson::String(oid.to_hex())),
+            "Expected serialized oid_optional_some to match original."
+        );
 
         let oid_vector = doc
             .get_array("oid_vector")
             .expect("Expected serialized oid_vector to be a BSON array.");
-        let expected_oid_vector: Vec<Bson> = b
-            .oid_vector
-            .into_iter()
-            .map(|oid| Bson::String(oid.to_hex()))
-            .collect();
+        let expected_oid_vector: Vec<Bson> = vec![Bson::String(oid.to_hex())];
         assert_eq!(
             oid_vector, &expected_oid_vector,
             "Expected each serialized element in oid_vector match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let b_deserialized: B = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let b_deserialized: B = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            b_deserialized.oid, oid,
-            "Expected deserialized oid to match the original."
-        );
-
-        assert_eq!(
-            b_deserialized.oid_optional_none, None,
-            "Expected deserialized oid_optional_none to be None."
-        );
-
-        assert_eq!(
-            b_deserialized.oid_optional_some,
-            Some(oid),
-            "Expected deserialized oid_optional_some to match the original."
-        );
-
-        assert_eq!(
-            b_deserialized.oid_vector,
-            vec![oid],
-            "Expected deserialized oid_vector to match the original.."
+            b_deserialized, b,
+            "Deserialized struct does not match original."
         );
 
         // Validate deserializing error case with an invalid ObjectId string
@@ -831,24 +775,24 @@ fn test_oid_helpers() {
 }
 
 #[test]
-fn test_bson_datetime_helpers() {
+fn test_datetime_helpers() {
     let _guard = LOCK.run_concurrently();
 
     #[cfg(feature = "serde_with-3")]
     {
         #[serde_as]
-        #[derive(Deserialize, Serialize, Debug)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct A {
-            #[serde_as(as = "bson_datetime::AsRfc3339String")]
+            #[serde_as(as = "datetime::AsRfc3339String")]
             pub date: DateTime,
 
-            #[serde_as(as = "Option<bson_datetime::AsRfc3339String>")]
+            #[serde_as(as = "Option<datetime::AsRfc3339String>")]
             pub date_optional_none: Option<DateTime>,
 
-            #[serde_as(as = "Option<bson_datetime::AsRfc3339String>")]
+            #[serde_as(as = "Option<datetime::AsRfc3339String>")]
             pub date_optional_some: Option<DateTime>,
 
-            #[serde_as(as = "Vec<bson_datetime::AsRfc3339String>")]
+            #[serde_as(as = "Vec<datetime::AsRfc3339String>")]
             pub date_vector: Vec<DateTime>,
         }
 
@@ -877,53 +821,27 @@ fn test_bson_datetime_helpers() {
             "Expected serialized date_optional_none to be None."
         );
 
-        match doc.get("date_optional_some") {
-            Some(Bson::String(value)) => {
-                assert_eq!(
-                    value, iso,
-                    "Expected serialized date_optional_some to match original date."
-                )
-            }
-            _ => panic!("Expected serialized date_optional_some to be a BSON String."),
-        }
+        assert_eq!(
+            doc.get("date_optional_some"),
+            Some(&Bson::String(iso.to_string())),
+            "Expected serialized date_optional_some to match original."
+        );
 
         let date_vector = doc
             .get_array("date_vector")
             .expect("Expected serialized date_vector to be a BSON array.");
-        let expected_date_vector: Vec<Bson> = a
-            .date_vector
-            .iter()
-            .map(|dt| Bson::String(dt.try_to_rfc3339_string().unwrap()))
-            .collect();
+        let expected_date_vector: Vec<Bson> =
+            vec![Bson::String(date.try_to_rfc3339_string().unwrap())];
         assert_eq!(
             date_vector, &expected_date_vector,
             "Expected each serialized element in date_vector to match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.date, date,
-            "Expected deserialized date to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_none, None,
-            "Expected deserialized date_optional_none to be None."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_some,
-            Some(date),
-            "Expected deserialized date_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_vector,
-            vec![date],
-            "Expected deserialized date_vector to match the original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
 
         // Validate deserializing error case with an invalid DateTime string
@@ -946,18 +864,18 @@ fn test_bson_datetime_helpers() {
         );
 
         #[serde_as]
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
         struct B {
-            #[serde_as(as = "bson_datetime::FromI64")]
+            #[serde_as(as = "datetime::FromI64")]
             date: i64,
 
-            #[serde_as(as = "Option<bson_datetime::FromI64>")]
+            #[serde_as(as = "Option<datetime::FromI64>")]
             date_optional_none: Option<i64>,
 
-            #[serde_as(as = "Option<bson_datetime::FromI64>")]
+            #[serde_as(as = "Option<datetime::FromI64>")]
             date_optional_some: Option<i64>,
 
-            #[serde_as(as = "Vec<bson_datetime::FromI64>")]
+            #[serde_as(as = "Vec<datetime::FromI64>")]
             date_vector: Vec<i64>,
         }
 
@@ -985,69 +903,41 @@ fn test_bson_datetime_helpers() {
             "Expected serialized date_optional_none to be None."
         );
 
-        match doc.get("date_optional_some") {
-            Some(Bson::DateTime(value)) => {
-                assert_eq!(
-                    *value, date,
-                    "Expected serialized date_optional_some to match original."
-                )
-            }
-            _ => panic!("Expected serialized date_optional_some to be a BSON DateTime."),
-        }
+        assert_eq!(
+            doc.get("date_optional_some"),
+            Some(&Bson::DateTime(date)),
+            "Expected serialized date_optional_some to match original."
+        );
 
         let date_vector = doc
             .get_array("date_vector")
             .expect("Expected serialized date_vector to be a BSON array.");
-        let expected_date_vector: Vec<Bson> = b
-            .date_vector
-            .into_iter()
-            .map(|dt| Bson::DateTime(DateTime::from_millis(dt)))
-            .collect();
+        let expected_date_vector: Vec<Bson> = vec![Bson::DateTime(date)];
         assert_eq!(
             date_vector, &expected_date_vector,
             "Expected each serialized element in date_vector match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let b_deserialized: B = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let b_deserialized: B = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            b_deserialized.date,
-            date.timestamp_millis(),
-            "Expected deserialized date to match original."
-        );
-
-        assert_eq!(
-            b_deserialized.date_optional_none, None,
-            "Expected deserialized date_optional_none to be None."
-        );
-
-        assert_eq!(
-            b_deserialized.date_optional_some,
-            Some(date.timestamp_millis()),
-            "Expected deserialized date_optional_some to match original."
-        );
-
-        assert_eq!(
-            b_deserialized.date_vector,
-            vec![date.timestamp_millis()],
-            "Expected deserialized date_vector to match original."
+            b_deserialized, b,
+            "Deserialized struct does not match original."
         );
 
         #[serde_as]
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct C {
-            #[serde_as(as = "bson_datetime::FromRfc3339String")]
+            #[serde_as(as = "datetime::FromRfc3339String")]
             pub date: String,
 
-            #[serde_as(as = "Option<bson_datetime::FromRfc3339String>")]
+            #[serde_as(as = "Option<datetime::FromRfc3339String>")]
             pub date_optional_none: Option<String>,
 
-            #[serde_as(as = "Option<bson_datetime::FromRfc3339String>")]
+            #[serde_as(as = "Option<datetime::FromRfc3339String>")]
             pub date_optional_some: Option<String>,
 
-            #[serde_as(as = "Vec<bson_datetime::FromRfc3339String>")]
+            #[serde_as(as = "Vec<datetime::FromRfc3339String>")]
             pub date_vector: Vec<String>,
         }
 
@@ -1075,54 +965,26 @@ fn test_bson_datetime_helpers() {
             "Expected serialized date_optional_none to be None."
         );
 
-        match doc.get("date_optional_some") {
-            Some(Bson::DateTime(value)) => {
-                assert_eq!(
-                    *value, date,
-                    "Expected serialized date_optional_some to match original."
-                )
-            }
-            _ => panic!("Expected serialized date_optional_some to be a BSON DateTime."),
-        }
+        assert_eq!(
+            doc.get("date_optional_some"),
+            Some(&Bson::DateTime(date)),
+            "Expected serialized date_optional_some to match original."
+        );
 
         let date_vector = doc
             .get_array("date_vector")
             .expect("Expected serialized date_vector to be a BSON array.");
-        let expected_date_vector: Vec<Bson> = c
-            .date_vector
-            .into_iter()
-            .map(|dt| Bson::DateTime(DateTime::parse_rfc3339_str(dt).unwrap()))
-            .collect();
+        let expected_date_vector: Vec<Bson> = vec![Bson::DateTime(date)];
         assert_eq!(
             date_vector, &expected_date_vector,
             "Expected each serialized element in date_vector match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let c_deserialized: C = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let c_deserialized: C = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            c_deserialized.date,
-            date.try_to_rfc3339_string().unwrap(),
-            "Expected deserialized date to match original."
-        );
-
-        assert_eq!(
-            c_deserialized.date_optional_none, None,
-            "Expected deserialized date_optional_none to be None."
-        );
-
-        assert_eq!(
-            c_deserialized.date_optional_some,
-            Some(date.try_to_rfc3339_string().unwrap()),
-            "Expected deserialized date_optional_some to match original."
-        );
-
-        assert_eq!(
-            c_deserialized.date_vector,
-            vec![date.try_to_rfc3339_string().unwrap()],
-            "Expected deserialized date_vector to match original."
+            c_deserialized, c,
+            "Deserialized struct does not match original."
         );
 
         // Validate serializing error case with an invalid DateTime string
@@ -1151,18 +1013,18 @@ fn test_bson_datetime_helpers() {
         use std::str::FromStr;
 
         #[serde_as]
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct A {
-            #[serde_as(as = "bson_datetime::FromChronoDateTime")]
+            #[serde_as(as = "datetime::FromChronoDateTime")]
             pub date: chrono::DateTime<chrono::Utc>,
 
-            #[serde_as(as = "Option<bson_datetime::FromChronoDateTime>")]
+            #[serde_as(as = "Option<datetime::FromChronoDateTime>")]
             pub date_optional_none: Option<chrono::DateTime<chrono::Utc>>,
 
-            #[serde_as(as = "Option<bson_datetime::FromChronoDateTime>")]
+            #[serde_as(as = "Option<datetime::FromChronoDateTime>")]
             pub date_optional_some: Option<chrono::DateTime<chrono::Utc>>,
 
-            #[serde_as(as = "Vec<bson_datetime::FromChronoDateTime>")]
+            #[serde_as(as = "Vec<datetime::FromChronoDateTime>")]
             pub date_vector: Vec<chrono::DateTime<chrono::Utc>>,
         }
 
@@ -1191,73 +1053,45 @@ fn test_bson_datetime_helpers() {
             "Expected serialized date_optional_none to be None."
         );
 
-        match doc.get("date_optional_some") {
-            Some(Bson::DateTime(value)) => {
-                assert_eq!(
-                    *value,
-                    DateTime::from_chrono(date),
-                    "Expected serialized date_optional_some to match original."
-                )
-            }
-            _ => panic!("Expected serialized date_optional_some to be a BSON DateTime."),
-        }
+        assert_eq!(
+            doc.get("date_optional_some"),
+            Some(&Bson::DateTime(DateTime::from_chrono(date))),
+            "Expected serialized date_optional_some to match original."
+        );
 
         let date_vector = doc
             .get_array("date_vector")
             .expect("Expected serialized date_vector to be a BSON array.");
-        let expected_date_vector: Vec<Bson> = a
-            .date_vector
-            .into_iter()
-            .map(|dt| Bson::DateTime(dt.into()))
-            .collect();
+        let expected_date_vector: Vec<Bson> = vec![Bson::DateTime(date.into())];
         assert_eq!(
             date_vector, &expected_date_vector,
             "Expected each serialized element in date_vector to be a BSON DateTime matching the \
              original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.date, date,
-            "Expected deserialized date to match original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_none, None,
-            "Expected deserialized date_optional_none to be None."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_some,
-            Some(date),
-            "Expected deserialized date_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_vector,
-            vec![date],
-            "Expected deserialized date_vector to match original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
     }
 
     #[cfg(all(feature = "time-0_3", feature = "serde_with-3"))]
     {
         #[serde_as]
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct A {
-            #[serde_as(as = "bson_datetime::FromTime03OffsetDateTime")]
+            #[serde_as(as = "datetime::FromTime03OffsetDateTime")]
             pub date: OffsetDateTime,
 
-            #[serde_as(as = "Option<bson_datetime::FromTime03OffsetDateTime>")]
+            #[serde_as(as = "Option<datetime::FromTime03OffsetDateTime>")]
             pub date_optional_none: Option<OffsetDateTime>,
 
-            #[serde_as(as = "Option<bson_datetime::FromTime03OffsetDateTime>")]
+            #[serde_as(as = "Option<datetime::FromTime03OffsetDateTime>")]
             pub date_optional_some: Option<OffsetDateTime>,
 
-            #[serde_as(as = "Vec<bson_datetime::FromTime03OffsetDateTime>")]
+            #[serde_as(as = "Vec<datetime::FromTime03OffsetDateTime>")]
             pub date_vector: Vec<OffsetDateTime>,
         }
 
@@ -1285,55 +1119,27 @@ fn test_bson_datetime_helpers() {
             "Expected serialized date_optional_none to be None."
         );
 
-        match doc.get("date_optional_some") {
-            Some(Bson::DateTime(value)) => {
-                assert_eq!(
-                    *value, date,
-                    "Expected serialized date_optional_some to match original."
-                )
-            }
-            _ => panic!("Expected serialized date_optional_some to be a BSON DateTime."),
-        }
+        assert_eq!(
+            doc.get("date_optional_some"),
+            Some(&Bson::DateTime(date)),
+            "Expected serialized date_optional_some to match original."
+        );
 
         let date_vector = doc
             .get_array("date_vector")
             .expect("Expected serialized date_vector to be a BSON array.");
-        let expected_date_vector: Vec<Bson> = a
-            .date_vector
-            .into_iter()
-            .map(|dt| Bson::DateTime(dt.into()))
-            .collect();
+        let expected_date_vector: Vec<Bson> = vec![Bson::DateTime(date)];
         assert_eq!(
             date_vector, &expected_date_vector,
             "Expected each serialized element in date_vector to be a BSON DateTime matching the \
              original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.date,
-            date.to_time_0_3(),
-            "Expected deserialized date to match original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_none, None,
-            "Expected deserialized date_optional_none to be None."
-        );
-
-        assert_eq!(
-            a_deserialized.date_optional_some,
-            Some(date.to_time_0_3()),
-            "Expected deserialized date_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.date_vector,
-            vec![date.to_time_0_3()],
-            "Expected deserialized date_vector to match original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
     }
 }
@@ -1345,7 +1151,7 @@ fn test_u32_helpers() {
     #[cfg(feature = "serde_with-3")]
     {
         #[serde_as]
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct A {
             #[serde_as(as = "u32::FromTimestamp")]
             pub timestamp: Timestamp,
@@ -1394,40 +1200,17 @@ fn test_u32_helpers() {
         let timestamp_vector = doc
             .get_array("timestamp_vector")
             .expect("Expected serialized timestamp_vector to be a BSON array.");
-        let expected_timestamp_vector: Vec<Bson> = a
-            .timestamp_vector
-            .iter()
-            .map(|ts| Bson::Int64(ts.time as i64))
-            .collect();
+        let expected_timestamp_vector: Vec<Bson> = vec![Bson::Int64(time as i64)];
         assert_eq!(
             timestamp_vector, &expected_timestamp_vector,
             "Expected each serialized element in timestamp_vector to match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.timestamp, timestamp,
-            "Expected deserialized timestamp to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.timestamp_optional_none, None,
-            "Expected deserialized timestamp_optional_none to be None."
-        );
-
-        assert_eq!(
-            a_deserialized.timestamp_optional_some,
-            Some(timestamp),
-            "Expected deserialized timestamp_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.timestamp_vector,
-            vec![timestamp],
-            "Expected deserialized timestamp_vector to match the original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
 
         // Validate serializing error case with an invalid Timestamp
@@ -1454,7 +1237,7 @@ fn test_u32_helpers() {
         );
 
         #[serde_as]
-        #[derive(Deserialize, Serialize, Debug)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct B {
             #[serde_as(as = "u32::AsTimestamp")]
             pub time: u32,
@@ -1493,59 +1276,27 @@ fn test_u32_helpers() {
             "Expected serialized time_optional_none to be None."
         );
 
-        match doc.get("time_optional_some") {
-            Some(Bson::Timestamp(ts)) => {
-                assert_eq!(
-                    *ts,
-                    Timestamp { time, increment: 0 },
-                    "Expected serialized time_optional_some to match original time."
-                )
-            }
-            _ => panic!("Expected serialized time_optional_some to be a BSON Timestamp."),
-        }
+        assert_eq!(
+            doc.get("time_optional_some"),
+            Some(&Bson::Timestamp(Timestamp { time, increment: 0 })),
+            "Expected serialized time_optional_some to match original."
+        );
 
         let time_vector = doc
             .get_array("time_vector")
             .expect("Expected serialized time_vector to be a BSON array.");
-        let expected_time_vector: Vec<Bson> = b
-            .time_vector
-            .iter()
-            .map(|val| {
-                Bson::Timestamp(Timestamp {
-                    time: *val,
-                    increment: 0,
-                })
-            })
-            .collect();
+        let expected_time_vector: Vec<Bson> =
+            vec![Bson::Timestamp(Timestamp { time, increment: 0 })];
         assert_eq!(
             time_vector, &expected_time_vector,
             "Expected each serialized element in time_vector to match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let b_deserialized: B = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let b_deserialized: B = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            b_deserialized.time, time,
-            "Expected deserialized time to match the original."
-        );
-
-        assert_eq!(
-            b_deserialized.time_optional_none, None,
-            "Expected deserialized time_optional_none to be None."
-        );
-
-        assert_eq!(
-            b_deserialized.time_optional_some,
-            Some(time),
-            "Expected deserialized time_optional_some to match the original."
-        );
-
-        assert_eq!(
-            b_deserialized.time_vector,
-            vec![time],
-            "Expected deserialized time_vector to match the original."
+            b_deserialized, b,
+            "Deserialized struct does not match original."
         );
 
         // Validate deserializing error case with an invalid Timestamp
@@ -1572,7 +1323,7 @@ fn test_u32_helpers() {
         );
 
         #[serde_as]
-        #[derive(Deserialize, Serialize, Debug)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct C {
             #[serde_as(as = "u32::AsF64")]
             pub value: u32,
@@ -1621,36 +1372,16 @@ fn test_u32_helpers() {
             .get_array("value_vector")
             .expect("Expected serialized value_vector to be a BSON array.");
         let expected_value_vector: Vec<Bson> = vec![Bson::Double(value as f64)];
-
         assert_eq!(
             value_vector, &expected_value_vector,
             "Expected each serialized element in value_vector to match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let c_deserialized: C = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let c_deserialized: C = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            c_deserialized.value, value,
-            "Expected deserialized value to match the original."
-        );
-
-        assert_eq!(
-            c_deserialized.value_optional_none, None,
-            "Expected deserialized val_optional_none to be None."
-        );
-
-        assert_eq!(
-            c_deserialized.value_optional_some,
-            Some(value),
-            "Expected deserialized val_optional_some to match the original."
-        );
-
-        assert_eq!(
-            c_deserialized.value_vector,
-            vec![value],
-            "Expected deserialized val_vector to match the original."
+            c_deserialized, c,
+            "Deserialized struct does not match original."
         );
 
         #[serde_as]
@@ -1712,7 +1443,7 @@ fn test_u32_helpers() {
         let d_deserialized: D = deserialize_from_document(doc).unwrap();
         assert_eq!(
             d_deserialized, d,
-            "Round-trip failed: deserialized struct did not match original."
+            "Deserialized struct does not match original."
         );
 
         // Validate serialization fails because u32::MAX is too large to fit in i32
@@ -1848,7 +1579,7 @@ fn test_u64_helpers() {
     #[cfg(feature = "serde_with-3")]
     {
         #[serde_as]
-        #[derive(Deserialize, Serialize, Debug)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct A {
             #[serde_as(as = "u64::AsF64")]
             pub value: u64,
@@ -1897,36 +1628,16 @@ fn test_u64_helpers() {
             .get_array("value_vector")
             .expect("Expected serialized value_vector to be a BSON array.");
         let expected_value_vector: Vec<Bson> = vec![Bson::Double(value as f64)];
-        // TODO: check whether this can be applied to other converters
         assert_eq!(
             value_vector, &expected_value_vector,
             "Expected each serialized element in value_vector to match the original."
         );
 
-        // Deserialize the BSON back to the struct
-        let a_deserialized: A = deserialize_from_document(doc).unwrap();
-
         // Validate deserialized data
+        let a_deserialized: A = deserialize_from_document(doc).unwrap();
         assert_eq!(
-            a_deserialized.value, value,
-            "Expected deserialized value to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.value_optional_none, None,
-            "Expected deserialized val_optional_none to be None."
-        );
-
-        assert_eq!(
-            a_deserialized.value_optional_some,
-            Some(value),
-            "Expected deserialized val_optional_some to match the original."
-        );
-
-        assert_eq!(
-            a_deserialized.value_vector,
-            vec![value],
-            "Expected deserialized val_vector to match the original."
+            a_deserialized, a,
+            "Deserialized struct does not match original."
         );
 
         // Validate serializing error case with u64 over size limit
