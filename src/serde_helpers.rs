@@ -1,26 +1,10 @@
 //! Collection of helper functions for serializing to and deserializing from BSON using Serde
-use serde::{de::Visitor, ser, Deserialize, Serialize, Serializer};
+use serde::{de::Visitor, Deserialize, Serialize, Serializer};
 use std::{
-    convert::TryFrom,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     result::Result,
 };
-
-#[doc(inline)]
-pub use timestamp_as_u32::{
-    deserialize as deserialize_timestamp_from_u32,
-    serialize as serialize_timestamp_as_u32,
-};
-#[doc(inline)]
-pub use u32_as_f64::{deserialize as deserialize_u32_from_f64, serialize as serialize_u32_as_f64};
-#[doc(inline)]
-pub use u32_as_timestamp::{
-    deserialize as deserialize_u32_from_timestamp,
-    serialize as serialize_u32_as_timestamp,
-};
-#[doc(inline)]
-pub use u64_as_f64::{deserialize as deserialize_u64_from_f64, serialize as serialize_u64_as_f64};
 
 #[cfg(feature = "uuid-1")]
 #[doc(inline)]
@@ -46,35 +30,6 @@ pub use uuid_1_as_python_legacy_binary::{
     deserialize as deserialize_uuid_1_from_python_legacy_binary,
     serialize as serialize_uuid_1_as_python_legacy_binary,
 };
-
-/// Attempts to serialize a u32 as an i32. Errors if an exact conversion is not possible.
-pub fn serialize_u32_as_i32<S: Serializer>(val: &u32, serializer: S) -> Result<S::Ok, S::Error> {
-    match i32::try_from(*val) {
-        Ok(val) => serializer.serialize_i32(val),
-        Err(_) => Err(ser::Error::custom(format!("cannot convert {} to i32", val))),
-    }
-}
-
-/// Serializes a u32 as an i64.
-pub fn serialize_u32_as_i64<S: Serializer>(val: &u32, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_i64(*val as i64)
-}
-
-/// Attempts to serialize a u64 as an i32. Errors if an exact conversion is not possible.
-pub fn serialize_u64_as_i32<S: Serializer>(val: &u64, serializer: S) -> Result<S::Ok, S::Error> {
-    match i32::try_from(*val) {
-        Ok(val) => serializer.serialize_i32(val),
-        Err(_) => Err(ser::Error::custom(format!("cannot convert {} to i32", val))),
-    }
-}
-
-/// Attempts to serialize a u64 as an i64. Errors if an exact conversion is not possible.
-pub fn serialize_u64_as_i64<S: Serializer>(val: &u64, serializer: S) -> Result<S::Ok, S::Error> {
-    match i64::try_from(*val) {
-        Ok(val) => serializer.serialize_i64(val),
-        Err(_) => Err(ser::Error::custom(format!("cannot convert {} to i64", val))),
-    }
-}
 
 #[cfg(feature = "serde_with-3")]
 pub mod object_id {
@@ -138,87 +93,6 @@ pub mod object_id {
     );
 }
 
-/// Contains functions to serialize a u32 as an f64 (BSON double) and deserialize a
-/// u32 from an f64 (BSON double).
-///
-/// ```rust
-/// # use serde::{Serialize, Deserialize};
-/// # use bson::serde_helpers::u32_as_f64;
-/// #[derive(Serialize, Deserialize)]
-/// struct FileInfo {
-///     #[serde(with = "u32_as_f64")]
-///     pub size_bytes: u32,
-/// }
-/// ```
-pub mod u32_as_f64 {
-    use serde::{de, Deserialize, Deserializer, Serializer};
-
-    /// Deserializes a u32 from an f64 (BSON double). Errors if an exact conversion is not possible.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<u32, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let f = f64::deserialize(deserializer)?;
-        if (f - f as u32 as f64).abs() <= f64::EPSILON {
-            Ok(f as u32)
-        } else {
-            Err(de::Error::custom(format!(
-                "cannot convert f64 (BSON double) {} to u32",
-                f
-            )))
-        }
-    }
-
-    /// Serializes a u32 as an f64 (BSON double).
-    pub fn serialize<S: Serializer>(val: &u32, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_f64(*val as f64)
-    }
-}
-
-/// Contains functions to serialize a u64 as an f64 (BSON double) and deserialize a
-/// u64 from an f64 (BSON double).
-///
-/// ```rust
-/// # use serde::{Serialize, Deserialize};
-/// # use bson::serde_helpers::u64_as_f64;
-/// #[derive(Serialize, Deserialize)]
-/// struct FileInfo {
-///     #[serde(with = "u64_as_f64")]
-///     pub size_bytes: u64,
-/// }
-/// ```
-pub mod u64_as_f64 {
-    use serde::{de, ser, Deserialize, Deserializer, Serializer};
-
-    /// Deserializes a u64 from an f64 (BSON double). Errors if an exact conversion is not possible.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let f = f64::deserialize(deserializer)?;
-        if (f - f as u64 as f64).abs() <= f64::EPSILON {
-            Ok(f as u64)
-        } else {
-            Err(de::Error::custom(format!(
-                "cannot convert f64 (BSON double) {} to u64",
-                f
-            )))
-        }
-    }
-
-    /// Serializes a u64 as an f64 (BSON double). Errors if an exact conversion is not possible.
-    pub fn serialize<S: Serializer>(val: &u64, serializer: S) -> Result<S::Ok, S::Error> {
-        if val < &u64::MAX && *val == *val as f64 as u64 {
-            serializer.serialize_f64(*val as f64)
-        } else {
-            Err(ser::Error::custom(format!(
-                "cannot convert u64 {} to f64 (BSON double)",
-                val
-            )))
-        }
-    }
-}
-
 /// Type converters for serializing and deserializing [`crate::DateTime`] using
 /// [`serde_with::serde_as`].
 ///
@@ -238,7 +112,6 @@ pub mod datetime {
     use chrono::Utc;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
-    use std::result::Result;
 
     serde_conv_doc!(
         /// Converts a [`DateTime`] to and from an RFC 3339 (ISO 8601) formatted string.
@@ -376,6 +249,282 @@ pub mod datetime {
         },
         |date: DateTime| -> Result<time::OffsetDateTime, String> {
             Ok(date.to_time_0_3())
+        }
+    );
+}
+
+/// Type converters for serializing and deserializing `u32` using [`serde_with::serde_as`].
+///
+/// ## Available converters
+/// - [`u32::FromTimestamp`] — converts a [`crate::Timestamp`] to and from a `u32`.
+/// - [`u32::AsTimestamp`] — converts a `u32` to and from a [`crate::Timestamp`].
+/// - [`u32::AsF64`] — converts a `u32` to and from an `f64`.
+/// - [`u32::AsI32`] — converts a `u32` to and from an `i32`.
+/// - [`u32::AsI64`] — converts a `u32` to and from an `i64`.
+#[cfg(feature = "serde_with-3")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde_with-3")))]
+pub mod u32 {
+    use crate::{macros::serde_conv_doc, Timestamp};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
+
+    serde_conv_doc!(
+        /// Converts a [`Timestamp`] to and from a `u32`.
+        ///
+        /// The `u32` should represent seconds since the Unix epoch.
+        ///
+        /// Serialization errors if the Timestamp has a non-zero increment.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::{serde_helpers::datetime, DateTime};
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Item {
+        ///     #[serde_as(as = "u32::FromTimestamp")]
+        ///     pub timestamp: Timestamp,
+        /// }
+        /// # }
+        /// ```
+        pub FromTimestamp,
+        Timestamp,
+        |timestamp: &Timestamp| -> Result<u32, String> {
+            if timestamp.increment != 0 {
+                return Err(format!("Cannot convert Timestamp with a non-zero increment to u32: {:?}", timestamp));
+            }
+            Ok(timestamp.time)
+        },
+        |value: u32| -> Result<Timestamp, String> {
+            Ok(Timestamp { time: value, increment: 0 })
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u32` to and from a [`Timestamp`].
+        ///
+        /// The `u32` should represent seconds since the Unix epoch.
+        ///
+        /// Deserialization errors if the Timestamp has a non-zero increment.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::serde_helpers::u32;
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Event {
+        ///     #[serde_as(as = "u32::AsTimestamp")]
+        ///     pub time: u32,
+        /// }
+        /// # }
+        /// ```
+        pub AsTimestamp,
+        u32,
+        |value: &u32| -> Result<Timestamp, String> {
+            Ok(Timestamp { time: *value, increment: 0 })
+        },
+        |timestamp: Timestamp| -> Result<u32, String> {
+            if timestamp.increment != 0 {
+                return Err(format!("Cannot convert Timestamp with a non-zero increment to u32: {:?}", timestamp));
+            }
+            Ok(timestamp.time)
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u32` to and from an `f64`.
+        ///
+        /// Deserialization errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::serde_helpers::u32;
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct FileInfo {
+        ///     #[serde_as(as = "u32::AsF64")]
+        ///     pub size_bytes: u32,
+        /// }
+        /// # }
+        /// ```
+        pub AsF64,
+        u32,
+        |value: &u32| -> Result<f64, String> {
+            Ok(*value as f64)
+        },
+        |value: f64| -> Result<u32, String> {
+            if (value - value as u32 as f64).abs() <= f64::EPSILON {
+                Ok(value as u32)
+            } else {
+                Err(format!("Cannot convert f64 {} to u32", value))
+            }
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u32` to and from an `i32`.
+        ///
+        /// Errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::{serde_helpers::u32};
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Item {
+        ///     #[serde_as(as = "u32::AsI32")]
+        ///     pub value: u32,
+        /// }
+        /// # }
+        /// ```
+        pub AsI32,
+        u32,
+        |value: &u32| -> Result<i32, String> {
+            i32::try_from(*value).map_err(|e| format!("Cannot convert u32 {} to i32: {}", value, e))
+        },
+        |value: i32| -> Result<u32, String> {
+            u32::try_from(value).map_err(|e| format!("Cannot convert i32 {} to u32: {}", value, e))
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u32` to and from an `i64`.
+        ///
+        /// Deserialization errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::{serde_helpers::u32};
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Item {
+        ///     #[serde_as(as = "u32::AsI64")]
+        ///     pub value: u32,
+        /// }
+        /// # }
+        /// ```
+        pub AsI64,
+        u32,
+        |value: &u32| -> Result<i64, String> {
+            Ok(*value as i64)
+        },
+        |value: i64| -> Result<u32, String> {
+            u32::try_from(value).map_err(|e| format!("Cannot convert i64 {} to u32: {}", value, e))
+        }
+    );
+}
+
+/// Type converters for serializing and deserializing `u64` using [`serde_with::serde_as`].
+///
+/// ## Available converters
+/// - [`u64::AsF64`] — converts a `u64` to and from an `f64`.
+/// - [`u64::AsI32`] — converts a `u64` to and from an `i32`.
+/// - [`u64::AsI64`] — converts a `u64` to and from an `i64`.
+#[cfg(feature = "serde_with-3")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde_with-3")))]
+pub mod u64 {
+    use crate::macros::serde_conv_doc;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
+
+    serde_conv_doc!(
+        /// Converts a `u64` to and from an `f64`.
+        ///
+        /// Errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::serde_helpers::u64;
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct FileInfo {
+        ///     #[serde_as(as = "u64::AsF64")]
+        ///     pub size_bytes: u64,
+        /// }
+        /// # }
+        /// ```
+        pub AsF64,
+        u64,
+        |value: &u64| -> Result<f64, String> {
+            if value < &u64::MAX && *value == *value as f64 as u64 {
+                Ok(*value as f64)
+            } else {
+                Err(format!("Cannot convert u64 {} to f64", value))
+            }
+        },
+        |value: f64| -> Result<u64, String> {
+            if (value - value as u64 as f64).abs() <= f64::EPSILON {
+               Ok(value as u64)
+            } else {
+                Err(format!("Cannot convert f64 {} to u64", value))
+            }
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u64` to and from an `i32`.
+        ///
+        /// Errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::{serde_helpers::u64};
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Item {
+        ///     #[serde_as(as = "u64::AsI32")]
+        ///     pub value: u64,
+        /// }
+        /// # }
+        /// ```
+        pub AsI32,
+        u64,
+        |value: &u64| -> Result<i32, String> {
+            i32::try_from(*value).map_err(|e| format!("Cannot convert u64 {} to i32: {}", value, e))
+        },
+        |value: i32| -> Result<u64, String> {
+            u64::try_from(value).map_err(|e| format!("Cannot convert i32 {} to u64: {}", value, e))
+        }
+    );
+
+    serde_conv_doc!(
+        /// Converts a `u64` to and from an `i64`.
+        ///
+        /// Errors if an exact conversion is not possible.
+        /// ```rust
+        /// # #[cfg(feature = "serde_with-3")]
+        /// # {
+        /// use bson::{serde_helpers::u64};
+        /// use serde::{Serialize, Deserialize};
+        /// use serde_with::serde_as;
+        /// #[serde_as]
+        /// #[derive(Serialize, Deserialize)]
+        /// struct Item {
+        ///     #[serde_as(as = "u64::AsI64")]
+        ///     pub value: u64,
+        /// }
+        /// # }
+        /// ```
+        pub AsI64,
+        u64,
+        |value: &u64| -> Result<i64, String> {
+            i64::try_from(*value).map_err(|e| format!("Cannot convert u64 {} to i64: {}", value, e))
+        },
+        |value: i64| -> Result<u64, String> {
+            u64::try_from(value).map_err(|e| format!("Cannot convert i64 {} to u64: {}", value, e))
         }
     );
 }
@@ -540,81 +689,6 @@ pub mod uuid_1_as_c_sharp_legacy_binary {
         uuid::Uuid,
         UuidRepresentation::CSharpLegacy
     );
-}
-
-/// Contains functions to serialize a u32 as a bson::Timestamp and deserialize a u32 from a
-/// bson::Timestamp. The u32 should represent seconds since the Unix epoch.
-///
-/// ```rust
-/// # use serde::{Serialize, Deserialize};
-/// # use bson::serde_helpers::u32_as_timestamp;
-/// #[derive(Serialize, Deserialize)]
-/// struct Event {
-///     #[serde(with = "u32_as_timestamp")]
-///     pub time: u32,
-/// }
-/// ```
-pub mod u32_as_timestamp {
-    use crate::{Bson, Timestamp};
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::result::Result;
-
-    /// Serializes a u32 as a bson::Timestamp.
-    pub fn serialize<S: Serializer>(val: &u32, serializer: S) -> Result<S::Ok, S::Error> {
-        let timestamp = Bson::Timestamp(Timestamp {
-            time: *val,
-            increment: 0,
-        });
-        timestamp.serialize(serializer)
-    }
-
-    /// Deserializes a u32 from a bson::Timestamp.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<u32, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let timestamp = Timestamp::deserialize(deserializer)?;
-        Ok(timestamp.time)
-    }
-}
-
-/// Contains functions to serialize a bson::Timestamp as a u32 and deserialize a bson::Timestamp
-/// from a u32. The u32 should represent seconds since the Unix epoch. Serialization will return an
-/// error if the Timestamp has a non-zero increment.
-///
-/// ```rust
-/// # use serde::{Serialize, Deserialize};
-/// # use bson::{serde_helpers::timestamp_as_u32, Timestamp};
-/// #[derive(Serialize, Deserialize)]
-/// struct Item {
-///     #[serde(with = "timestamp_as_u32")]
-///     pub timestamp: Timestamp,
-/// }
-/// ```
-pub mod timestamp_as_u32 {
-    use crate::Timestamp;
-    use serde::{ser, Deserialize, Deserializer, Serializer};
-    use std::result::Result;
-
-    /// Serializes a bson::Timestamp as a u32. Returns an error if the conversion is lossy (i.e. the
-    /// Timestamp has a non-zero increment).
-    pub fn serialize<S: Serializer>(val: &Timestamp, serializer: S) -> Result<S::Ok, S::Error> {
-        if val.increment != 0 {
-            return Err(ser::Error::custom(
-                "Cannot convert Timestamp with a non-zero increment to u32",
-            ));
-        }
-        serializer.serialize_u32(val.time)
-    }
-
-    /// Deserializes a bson::Timestamp from a u32.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Timestamp, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let time = u32::deserialize(deserializer)?;
-        Ok(Timestamp { time, increment: 0 })
-    }
 }
 
 /// Wrapping a type in `HumanReadable` signals to the BSON serde integration that it and all
